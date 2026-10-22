@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAN Link Sharer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 650px; background: #1e1e1e; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h2 { margin-top: 0; color: #ffffff; text-align: center; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #333; background: #2a2a2a; color: #fff; font-size: 16px; }
+        input[type="text"]:focus { outline: none; border-color: #007bff; }
+        button { padding: 12px 20px; border: none; border-radius: 6px; background: #007bff; color: white; font-weight: bold; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .list-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+        .list-actions button, .item-actions button { padding: 7px 11px; font-size: 13px; }
+        .danger-btn { background: #b42318; }
+        .danger-btn:hover { background: #8f1c13; }
+        ul { list-style: none; padding: 0; margin: 0; }
+        li { background: #2a2a2a; margin-bottom: 10px; padding: 14px; border-radius: 6px; display: flex; gap: 12px; align-items: center; }
+        .link-details { flex: 1; min-width: 0; }
+        a { color: #4da6ff; text-decoration: none; font-size: 16px; }
+        a:hover { text-decoration: underline; }
+        .link-url { display: block; margin-top: 4px; font-size: 12px; color: #888; overflow-wrap: anywhere; }
+        .item-actions { display: flex; gap: 6px; }
+        .copy-btn { background: #3a3a3a; padding: 6px 12px; font-size: 12px; margin-left: 10px; }
+        .copy-btn:hover { background: #4a4a4a; }
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .container { padding: 18px; }
+            li { align-items: flex-start; }
+            .item-actions { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🌐 LAN Link Sharer</h2>
+        <div class="input-group" style="flex-direction: column; gap: 10px;">
+            <input type="text" id="titleInput" placeholder="Link Name / Title (Optional)" autocomplete="off">
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <input type="text" id="urlInput" placeholder="Paste link here..." autocomplete="off" style="flex: 1;">
+                <button onclick="sendLink()">Send</button>
+            </div>
+        </div>
+        <div class="list-actions">
+            <button id="clearAllButton" class="danger-btn" onclick="clearAllLinks()" disabled>Clear All</button>
+        </div>
+        <ul id="linkList"></ul>
+        <p id="emptyState">No links shared yet.</p>
+    </div>
+
+    <script>
+        const socket = io();
+
+        socket.on('load_history', function(links) {
+            const list = document.getElementById('linkList');
+            list.innerHTML = '';
+            links.forEach(addLinkToList);
+        });
+
+        socket.on('receive_link', function(data) {
+            addLinkToList(data, true);
+        });
+
+        socket.on('links_removed', function(ids) {
+            const removedIds = new Set(ids);
+            document.querySelectorAll('#linkList li').forEach(function(item) {
+                if (removedIds.has(item.dataset.linkId)) item.remove();
+            });
+            updateListActions();
+        });
+
+        socket.on('links_cleared', function() {
+            document.getElementById('linkList').replaceChildren();
+            updateListActions();
+        });
+
+        function sendLink() {
+            const urlInput = document.getElementById('urlInput');
+            const titleInput = document.getElementById('titleInput');
+            
+            if (urlInput.value.trim() !== '') {
+                socket.emit('share_link', { 
+                    url: urlInput.value.trim(),
+                    title: titleInput.value.trim()
+                });
+                urlInput.value = '';
+                titleInput.value = '';
+            }
+        }
+
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendLink();
+        });
+        document.getElementById('titleInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendLink();
+        });
+
+        function addLinkToList(data, prepend = false) {
+            const list = document.getElementById('linkList');
+            const li = document.createElement('li');
+            li.dataset.linkId = data.id;
+
+            const details = document.createElement('div');
+            details.className = 'link-details';
+            const anchor = document.createElement('a');
+            anchor.href = data.url;
+            anchor.target = '_blank';
+            anchor.rel = 'noopener noreferrer';
+            anchor.style.fontWeight = 'bold';
+            anchor.textContent = data.title || data.url;
+
+            const url = document.createElement('span');
+            url.className = 'link-url';
+            url.textContent = data.url;
+            details.append(anchor, url);
+
+            const actions = document.createElement('div');
+            actions.className = 'item-actions';
+            const copyButton = document.createElement('button');
+            copyButton.className = 'copy-btn';
+            copyButton.textContent = 'Copy';
+            copyButton.addEventListener('click', function() {
+                copyToClipboard(data.url);
+            });
+
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'danger-btn';
+            deleteButton.textContent = 'Delete';
+            deleteButton.addEventListener('click', function() {
+                socket.emit('remove_links', { ids: [data.id] });
+            });
+            actions.append(copyButton, deleteButton);
+            li.append(details, actions);
+
+            if (prepend && list.firstChild) {
+                list.insertBefore(li, list.firstChild);
+            } else {
+                list.appendChild(li);
+            }
+            updateListActions();
+        }
+
+        function clearAllLinks() {
+            socket.emit('clear_links');
+        }
+
+        function updateListActions() {
+            const hasLinks = document.querySelector('#linkList li') !== null;
+            document.getElementById('clearAllButton').disabled = !hasLinks;
+            document.getElementById('emptyState').hidden = hasLinks;
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text);
+        }
+    </script>
+</body>
+</html>
