@@ -1,7 +1,13 @@
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
+from dotenv import load_dotenv
+import hmac
+import os
+from pathlib import Path
 import socket
 import uuid
+
+load_dotenv(Path(__file__).resolve().with_name('.env'))
 
 app = Flask(__name__, template_folder='template')
 app.config['SECRET_KEY'] = 'lan_link_sharer_secret'
@@ -43,25 +49,19 @@ def handle_share_link(data):
         # Broadcast the new link to ALL connected devices
         emit('receive_link', link_data, broadcast=True)
 
-@socketio.on('remove_links')
-def handle_remove_links(data):
-    link_ids = data.get('ids', [])
-    if not isinstance(link_ids, list):
-        return
-
-    ids_to_remove = {link_id for link_id in link_ids if isinstance(link_id, str)}
-    if not ids_to_remove:
-        return
-
-    link_history[:] = [
-        link for link in link_history if link.get('id') not in ids_to_remove
-    ]
-    emit('links_removed', list(ids_to_remove), broadcast=True)
-
 @socketio.on('clear_links')
-def handle_clear_links():
+def handle_clear_links(data):
+    configured_key = os.environ.get('LINK_CLEAR_KEY')
+    provided_key = data.get('key') if isinstance(data, dict) else None
+
+    if not configured_key:
+        return {'success': False, 'message': 'Link clearing is not configured on the server.'}
+    if not isinstance(provided_key, str) or not hmac.compare_digest(provided_key, configured_key):
+        return {'success': False, 'message': 'Incorrect key.'}
+
     link_history.clear()
     emit('links_cleared', broadcast=True)
+    return {'success': True}
 
 def get_local_ip():
     """Retrieve the host computer's local network IP address."""

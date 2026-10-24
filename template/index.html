@@ -17,23 +17,25 @@
         button:hover { background: #0056b3; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         .list-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
-        .list-actions button, .item-actions button { padding: 7px 11px; font-size: 13px; }
+        .list-actions button { padding: 7px 11px; font-size: 13px; }
         .danger-btn { background: #b42318; }
         .danger-btn:hover { background: #8f1c13; }
+        dialog { background: #1e1e1e; color: #e0e0e0; border: 1px solid #444; border-radius: 8px; padding: 20px; }
+        dialog::backdrop { background: rgba(0,0,0,0.7); }
+        .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+        .dialog-actions button { padding: 8px 12px; font-size: 14px; }
         ul { list-style: none; padding: 0; margin: 0; }
         li { background: #2a2a2a; margin-bottom: 10px; padding: 14px; border-radius: 6px; display: flex; gap: 12px; align-items: center; }
         .link-details { flex: 1; min-width: 0; }
         a { color: #4da6ff; text-decoration: none; font-size: 16px; }
         a:hover { text-decoration: underline; }
         .link-url { display: block; margin-top: 4px; font-size: 12px; color: #888; overflow-wrap: anywhere; }
-        .item-actions { display: flex; gap: 6px; }
         .copy-btn { background: #3a3a3a; padding: 6px 12px; font-size: 12px; margin-left: 10px; }
         .copy-btn:hover { background: #4a4a4a; }
         @media (max-width: 480px) {
             body { padding: 10px; }
             .container { padding: 18px; }
             li { align-items: flex-start; }
-            .item-actions { flex-direction: column; }
         }
     </style>
 </head>
@@ -50,6 +52,16 @@
         <div class="list-actions">
             <button id="clearAllButton" class="danger-btn" onclick="clearAllLinks()" disabled>Clear All</button>
         </div>
+        <dialog id="clearKeyDialog">
+            <form id="clearKeyForm">
+                <label for="clearKeyInput">Enter the key to clear all links:</label>
+                <input type="password" id="clearKeyInput" autocomplete="current-password" required style="display: block; width: 100%; margin-top: 10px;">
+                <div class="dialog-actions">
+                    <button type="button" onclick="document.getElementById('clearKeyDialog').close()">Cancel</button>
+                    <button type="submit" class="danger-btn">Clear All</button>
+                </div>
+            </form>
+        </dialog>
         <ul id="linkList"></ul>
         <p id="emptyState">No links shared yet.</p>
     </div>
@@ -65,14 +77,6 @@
 
         socket.on('receive_link', function(data) {
             addLinkToList(data, true);
-        });
-
-        socket.on('links_removed', function(ids) {
-            const removedIds = new Set(ids);
-            document.querySelectorAll('#linkList li').forEach(function(item) {
-                if (removedIds.has(item.dataset.linkId)) item.remove();
-            });
-            updateListActions();
         });
 
         socket.on('links_cleared', function() {
@@ -101,6 +105,20 @@
             if (e.key === 'Enter') sendLink();
         });
 
+        document.getElementById('clearKeyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const keyInput = document.getElementById('clearKeyInput');
+            const key = keyInput.value;
+            keyInput.value = '';
+            document.getElementById('clearKeyDialog').close();
+
+            socket.emit('clear_links', { key: key }, function(result) {
+                if (!result || !result.success) {
+                    window.alert(result && result.message ? result.message : 'Unable to clear links.');
+                }
+            });
+        });
+
         function addLinkToList(data, prepend = false) {
             const list = document.getElementById('linkList');
             const li = document.createElement('li');
@@ -120,8 +138,6 @@
             url.textContent = data.url;
             details.append(anchor, url);
 
-            const actions = document.createElement('div');
-            actions.className = 'item-actions';
             const copyButton = document.createElement('button');
             copyButton.className = 'copy-btn';
             copyButton.textContent = 'Copy';
@@ -129,14 +145,7 @@
                 copyToClipboard(data.url);
             });
 
-            const deleteButton = document.createElement('button');
-            deleteButton.className = 'danger-btn';
-            deleteButton.textContent = 'Delete';
-            deleteButton.addEventListener('click', function() {
-                socket.emit('remove_links', { ids: [data.id] });
-            });
-            actions.append(copyButton, deleteButton);
-            li.append(details, actions);
+            li.append(details, copyButton);
 
             if (prepend && list.firstChild) {
                 list.insertBefore(li, list.firstChild);
@@ -147,7 +156,8 @@
         }
 
         function clearAllLinks() {
-            socket.emit('clear_links');
+            document.getElementById('clearKeyDialog').showModal();
+            document.getElementById('clearKeyInput').focus();
         }
 
         function updateListActions() {
