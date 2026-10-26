@@ -92,6 +92,10 @@
                 socket.emit('share_link', { 
                     url: urlInput.value.trim(),
                     title: titleInput.value.trim()
+                }, function(result) {
+                    if (!result || !result.success) {
+                        window.alert(result && result.message ? result.message : 'Unable to save the link.');
+                    }
                 });
                 urlInput.value = '';
                 titleInput.value = '';

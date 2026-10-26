@@ -1,2 +1,4 @@
 __pycache__
 .env
+links.json
+links.json.tmp

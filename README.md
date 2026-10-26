@@ -6,7 +6,10 @@ Running the host server spins up a local web instance accessible via the host's 
 
 ## Tech Stack: Python, Flask, Flask-SocketIO, HTML5, JavaScript, WebSockets.
 
-## Key Features: Zero-latency real-time link broadcasting, custom alias naming, persistent in-memory session history, and automated local IP detection.
+## Key Features: Zero-latency real-time link broadcasting, custom alias naming, persistent JSON link history, and automated local IP detection.
+
+## Link History
+Shared links are saved in `links.json` next to `app.py` and loaded when the server starts, so they remain available after a restart. The file is created automatically and is excluded from version control. The history keeps the 50 most recent links.
 
 ## Clearing Links
 Individual links cannot be deleted. Clearing the full link list requires setting `LINK_CLEAR_KEY` in a `.env` file in the project directory:
